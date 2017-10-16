@@ -6,7 +6,7 @@ FromBodyPropertyAttribute lets you bind ASP.NET Core MVC Controller action param
 How to use
 ----------------------------
 
-# Setup
+## Setup
 In Startup.cs add (I)FromBodyPropertyModelBinderHelper & FromBodyPropertyJsonOptionsSetup
 
 ```csharp
@@ -17,7 +17,7 @@ In Startup.cs add (I)FromBodyPropertyModelBinderHelper & FromBodyPropertyJsonOpt
 		}
 ```
 
-# Example controller
+## Example controller
 
 ```csharp
 	public class HomeController : Controller {
@@ -27,7 +27,7 @@ In Startup.cs add (I)FromBodyPropertyModelBinderHelper & FromBodyPropertyJsonOpt
 	}
 ```
 
-# Example ajax request
+## Example ajax request
 
 ```javascript
 		var request = {
@@ -53,3 +53,6 @@ In Startup.cs add (I)FromBodyPropertyModelBinderHelper & FromBodyPropertyJsonOpt
 		}
 		jQuery.ajax(ajaxOptions);
 ```
+
+## License
+[Apache 2.0](LICENSE)

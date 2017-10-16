@@ -1,0 +1,70 @@
+﻿@{
+    ViewData["Title"] = "Home Page";
+}
+
+<div>
+	<h1>FromBodyProperty</h1>
+	<div>
+		<input type="number" id="xInput" value="2" /><span> x </span><input type="number" id="yInput" value="5" /><span> = </span><span id="resultSpan"></span>
+	</div>
+	<div>
+		<a href="#" role="button" onclick="javascript: executeRequest();">
+			<span>Execute request</span>
+		</a>
+	</div>
+	<div style="margin-top: 20px;">
+		<div style="float: left; min-width: 200px;">
+			<div>Request</div>
+			<div id="requestDataDiv" style="white-space: pre-wrap;">
+
+			</div>
+		</div>
+		<div style="float: left;">
+			<div>Response</div>
+			<div id="responseDataDiv" style="white-space: pre-wrap;">
+
+			</div>
+		</div>
+		<div style="clear: both;"></div>
+	</div>
+</div>
+
+@section Scripts {
+
+<script type="text/javascript">
+//<![CDATA[
+
+	function executeRequest() {
+
+		var x = parseInt(document.getElementById('xInput').value);
+		var y = parseInt(document.getElementById('yInput').value);
+		var request = {
+			x: x,
+			y: y
+		}
+
+		document.getElementById('requestDataDiv').textContent = JSON.stringify(request, null, 4);
+
+		var ajaxOptions = {
+			url: "/Home/Multiply",
+			dataType: "json",
+			contentType: "application/json; charset=utf-8",
+			type: "POST",
+			data: JSON.stringify(request),
+			success: function (data, textStatus, jqXHR) {
+				document.getElementById('responseDataDiv').textContent = JSON.stringify(data, null, 4);
+				document.getElementById('resultSpan').textContent = data.result.toString();
+			},
+			error: function (jqXHR, textStatus, errorThrown) {
+				if (jqXHR.responseJSON) {
+					document.getElementById('responseDataDiv').textContent = JSON.stringify(jqXHR.responseJSON, null, 4);
+				}
+				alert(textStatus);
+			}
+		}
+		jQuery.ajax(ajaxOptions);
+	}
+
+//]]>
+</script>
+}
