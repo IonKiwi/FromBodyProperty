@@ -15,6 +15,7 @@ namespace WebApplication.Logic {
 		private readonly JsonSerializerSettings _jsonSerializerSettings;
 		private readonly ArrayPool<char> _charPool;
 		private readonly ObjectPoolProvider _objectPoolProvider;
+		private readonly MvcJsonOptions _jsonOptions;
 
 		public FromBodyPropertyJsonOptionsSetup(
 				ILoggerFactory loggerFactory,
@@ -41,6 +42,7 @@ namespace WebApplication.Logic {
 			_jsonSerializerSettings = jsonOptions.Value.SerializerSettings;
 			_charPool = charPool;
 			_objectPoolProvider = objectPoolProvider;
+			_jsonOptions = jsonOptions.Value;
 		}
 
 		public void Configure(MvcOptions options) {
@@ -52,7 +54,8 @@ namespace WebApplication.Logic {
 							_jsonSerializerSettings,
 							_charPool,
 							_objectPoolProvider,
-							options.SuppressInputFormatterBuffering);
+							options,
+							_jsonOptions);
 				}
 			}
 		}
