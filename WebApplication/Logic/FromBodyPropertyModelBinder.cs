@@ -1,6 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Formatters;
-using Microsoft.AspNetCore.Mvc.Internal;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -12,55 +11,76 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
-using Newtonsoft.Json;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
+using System.Text.Json;
+using Microsoft.AspNetCore.Mvc.ModelBinding.Metadata;
 
 namespace WebApplication.Logic {
-	/// <summary>
-	/// An <see cref="IModelBinder"/> which binds models from the request body json properties using an <see cref="IInputFormatter"/>.
-	/// </summary>
 	public class FromBodyPropertyModelBinder : IModelBinder {
-		private readonly IList<IInputFormatter> _formatters;
-		private readonly Func<Stream, Encoding, TextReader> _readerFactory;
-		private readonly ILogger _logger;
-		private readonly MvcOptions _options;
 
+		#region Framework log
+
+		private static readonly Action<ILogger, Type, string, Exception> _attemptingToBindModel;
+		private static readonly Action<ILogger, string, Type, string, Exception> _attemptingToBindParameterModel;
+		private static readonly Action<ILogger, Type, string, Type, string, Exception> _attemptingToBindPropertyModel;
+		private static readonly Action<ILogger, Type, string, Exception> _doneAttemptingToBindModel;
+		private static readonly Action<ILogger, string, Type, Exception> _doneAttemptingToBindParameterModel;
+		private static readonly Action<ILogger, Type, string, Type, Exception> _doneAttemptingToBindPropertyModel;
 		private static readonly Action<ILogger, IInputFormatter, string, Exception> _inputFormatterSelected;
 		private static readonly Action<ILogger, IInputFormatter, string, Exception> _inputFormatterRejected;
 		private static readonly Action<ILogger, string, Exception> _noInputFormatterSelected;
 		private static readonly Action<ILogger, string, string, Exception> _removeFromBodyAttribute;
 
 		static FromBodyPropertyModelBinder() {
+			_attemptingToBindModel = LoggerMessage.Define<Type, string>(
+								LogLevel.Debug,
+								new EventId(24, "AttemptingToBindModel"),
+								"Attempting to bind model of type '{ModelType}' using the name '{ModelName}' in request data ...");
+			_attemptingToBindParameterModel = LoggerMessage.Define<string, Type, string>(
+							LogLevel.Debug,
+							new EventId(44, "AttemptingToBindParameterModel"),
+							"Attempting to bind parameter '{ParameterName}' of type '{ModelType}' using the name '{ModelName}' in request data ...");
+			_attemptingToBindPropertyModel = LoggerMessage.Define<Type, string, Type, string>(
+				 LogLevel.Debug,
+					new EventId(13, "AttemptingToBindPropertyModel"),
+				 "Attempting to bind property '{PropertyContainerType}.{PropertyName}' of type '{ModelType}' using the name '{ModelName}' in request data ...");
+			_doneAttemptingToBindModel = LoggerMessage.Define<Type, string>(
+							 LogLevel.Debug,
+							 new EventId(25, "DoneAttemptingToBindModel"),
+							 "Done attempting to bind model of type '{ModelType}' using the name '{ModelName}'.");
+			_doneAttemptingToBindParameterModel = LoggerMessage.Define<string, Type>(
+						 LogLevel.Debug,
+							new EventId(45, "DoneAttemptingToBindParameterModel"),
+						 "Done attempting to bind parameter '{ParameterName}' of type '{ModelType}'.");
+			_doneAttemptingToBindPropertyModel = LoggerMessage.Define<Type, string, Type>(
+						 LogLevel.Debug,
+							new EventId(14, "DoneAttemptingToBindPropertyModel"),
+						 "Done attempting to bind property '{PropertyContainerType}.{PropertyName}' of type '{ModelType}'.");
 			_inputFormatterSelected = LoggerMessage.Define<IInputFormatter, string>(
-								LogLevel.Debug,
-								1,
-								"Selected input formatter '{InputFormatter}' for content type '{ContentType}'.");
-
+						 LogLevel.Debug,
+						 new EventId(1, "InputFormatterSelected"),
+						 "Selected input formatter '{InputFormatter}' for content type '{ContentType}'.");
 			_inputFormatterRejected = LoggerMessage.Define<IInputFormatter, string>(
-					LogLevel.Debug,
-					2,
-					"Rejected input formatter '{InputFormatter}' for content type '{ContentType}'.");
-
+							 LogLevel.Debug,
+							 new EventId(2, "InputFormatterRejected"),
+							 "Rejected input formatter '{InputFormatter}' for content type '{ContentType}'.");
 			_noInputFormatterSelected = LoggerMessage.Define<string>(
-								LogLevel.Debug,
-								3,
-								"No input formatter was found to support the content type '{ContentType}' for use with the [FromBody] attribute.");
-
+							LogLevel.Debug,
+							new EventId(3, "NoInputFormatterSelected"),
+							"No input formatter was found to support the content type '{ContentType}' for use with the [FromBody] attribute.");
 			_removeFromBodyAttribute = LoggerMessage.Define<string, string>(
 								LogLevel.Debug,
-								4,
+								new EventId(4, "RemoveFromBodyAttribute"),
 								"To use model binding, remove the [FromBody] attribute from the property or parameter named '{ModelName}' with model type '{ModelType}'.");
 		}
 
-		/// <summary>
-		/// Creates a new <see cref="FromBodyPropertyModelBinder"/>.
-		/// </summary>
-		/// <param name="formatters">The list of <see cref="IInputFormatter"/>.</param>
-		/// <param name="readerFactory">
-		/// The <see cref="IHttpRequestStreamReaderFactory"/>, used to create <see cref="System.IO.TextReader"/>
-		/// instances for reading the request body.
-		/// </param>
-		/// <param name="loggerFactory">The <see cref="ILoggerFactory"/>.</param>
+		#endregion
+
+		private readonly IList<IInputFormatter> _formatters;
+		private readonly Func<Stream, Encoding, TextReader> _readerFactory;
+		private readonly ILogger _logger;
+		private readonly MvcOptions _options;
+
 		public FromBodyPropertyModelBinder(
 				IOptions<MvcOptions> mvcOptions,
 				IHttpRequestStreamReaderFactory readerFactory,
@@ -85,6 +105,8 @@ namespace WebApplication.Logic {
 			if (bindingContext == null) {
 				throw new ArgumentNullException(nameof(bindingContext));
 			}
+
+			AttemptingToBindModel(_logger, bindingContext);
 
 			// Special logic for body, treat the model name as string.Empty for the top level
 			// object, but allow an override via BinderModelName. The purpose of this is to try
@@ -130,22 +152,25 @@ namespace WebApplication.Logic {
 
 			if (formatter == null) {
 				NoInputFormatterSelected(_logger, formatterContext);
-				var message = string.Format("UnsupportedContentType: {0}", httpContext.Request.ContentType);
+
+				var message = "FormatUnsupportedContentType: " + httpContext.Request.ContentType;
 				var exception = new UnsupportedContentTypeException(message);
 				bindingContext.ModelState.AddModelError(modelBindingKey, exception, bindingContext.ModelMetadata);
+				DoneAttemptingToBindModel(_logger, bindingContext);
 				return;
 			}
 
 			try {
 				var result = await formatter.ReadAsync(formatterContext);
-				var model = result.Model;
 
 				if (result.HasError) {
 					// Formatter encountered an error. Do not use the model it returned.
+					DoneAttemptingToBindModel(_logger, bindingContext);
 					return;
 				}
 
 				if (result.IsModelSet) {
+					var model = result.Model;
 					bindingContext.Result = ModelBindingResult.Success(model);
 				}
 				else {
@@ -161,8 +186,78 @@ namespace WebApplication.Logic {
 					bindingContext.ModelState.AddModelError(modelBindingKey, message);
 				}
 			}
-			catch (Exception ex) {
-				bindingContext.ModelState.AddModelError(modelBindingKey, ex, bindingContext.ModelMetadata);
+			catch (Exception exception) when (exception is InputFormatterException || ShouldHandleException(formatter)) {
+				bindingContext.ModelState.AddModelError(modelBindingKey, exception, bindingContext.ModelMetadata);
+			}
+
+			DoneAttemptingToBindModel(_logger, bindingContext);
+		}
+
+		private bool ShouldHandleException(IInputFormatter formatter) {
+			// Any explicit policy on the formatters overrides the default.
+			var policy = (formatter as IInputFormatterExceptionPolicy)?.ExceptionPolicy ??
+					InputFormatterExceptionPolicy.MalformedInputExceptions;
+
+			return policy == InputFormatterExceptionPolicy.AllExceptions;
+		}
+
+		#region Framework log
+
+		private static void AttemptingToBindModel(ILogger logger, ModelBindingContext bindingContext) {
+			if (!logger.IsEnabled(LogLevel.Debug)) {
+				return;
+			}
+
+			var modelMetadata = bindingContext.ModelMetadata;
+			switch (modelMetadata.MetadataKind) {
+				case ModelMetadataKind.Parameter:
+					_attemptingToBindParameterModel(
+							logger,
+							modelMetadata.ParameterName,
+							modelMetadata.ModelType,
+							bindingContext.ModelName,
+							null);
+					break;
+				case ModelMetadataKind.Property:
+					_attemptingToBindPropertyModel(
+							logger,
+							modelMetadata.ContainerType,
+							modelMetadata.PropertyName,
+							modelMetadata.ModelType,
+							bindingContext.ModelName,
+							null);
+					break;
+				case ModelMetadataKind.Type:
+					_attemptingToBindModel(logger, bindingContext.ModelType, bindingContext.ModelName, null);
+					break;
+			}
+		}
+
+		private static void DoneAttemptingToBindModel(ILogger logger, ModelBindingContext bindingContext) {
+			if (!logger.IsEnabled(LogLevel.Debug)) {
+				return;
+			}
+
+			var modelMetadata = bindingContext.ModelMetadata;
+			switch (modelMetadata.MetadataKind) {
+				case ModelMetadataKind.Parameter:
+					_doneAttemptingToBindParameterModel(
+							logger,
+							modelMetadata.ParameterName,
+							modelMetadata.ModelType,
+							null);
+					break;
+				case ModelMetadataKind.Property:
+					_doneAttemptingToBindPropertyModel(
+							logger,
+							modelMetadata.ContainerType,
+							modelMetadata.PropertyName,
+							modelMetadata.ModelType,
+							null);
+					break;
+				case ModelMetadataKind.Type:
+					_doneAttemptingToBindModel(logger, bindingContext.ModelType, bindingContext.ModelName, null);
+					break;
 			}
 		}
 
@@ -170,7 +265,6 @@ namespace WebApplication.Logic {
 					 ILogger logger,
 					 IInputFormatter inputFormatter,
 					 InputFormatterContext formatterContext) {
-			if (logger == null) { return; }
 			if (logger.IsEnabled(LogLevel.Debug)) {
 				var contentType = formatterContext.HttpContext.Request.ContentType;
 				_inputFormatterSelected(logger, inputFormatter, contentType, null);
@@ -181,7 +275,6 @@ namespace WebApplication.Logic {
 				ILogger logger,
 				IInputFormatter inputFormatter,
 				InputFormatterContext formatterContext) {
-			if (logger == null) { return; }
 			if (logger.IsEnabled(LogLevel.Debug)) {
 				var contentType = formatterContext.HttpContext.Request.ContentType;
 				_inputFormatterRejected(logger, inputFormatter, contentType, null);
@@ -189,8 +282,8 @@ namespace WebApplication.Logic {
 		}
 
 		private static void NoInputFormatterSelected(
-						ILogger logger,
-						InputFormatterContext formatterContext) {
+				ILogger logger,
+				InputFormatterContext formatterContext) {
 			if (logger.IsEnabled(LogLevel.Debug)) {
 				var contentType = formatterContext.HttpContext.Request.ContentType;
 				_noInputFormatterSelected(logger, contentType, null);
@@ -201,6 +294,8 @@ namespace WebApplication.Logic {
 				}
 			}
 		}
+
+		#endregion
 	}
 
 	public sealed class FromBodyPropertyInputFormatterContext : InputFormatterContext {
@@ -225,7 +320,7 @@ namespace WebApplication.Logic {
 		public string ActionId { get; }
 		public string FieldName { get; }
 
-		public Task<Tuple<bool, object, Dictionary<string, Exception>>> ReadAsync(Func<Action<JsonSerializer, JsonReader>, Action<string, Exception>, Task> readRequestBody, Encoding encoding) {
+		public Task<(bool success, bool noValue, object model, Exception exception)> ReadAsync(Func<Func<Stream, JsonSerializerOptions, Task>, Task> readRequestBody, Encoding encoding) {
 			return _binderHelper.ReadAsync(this, readRequestBody, encoding);
 		}
 	}

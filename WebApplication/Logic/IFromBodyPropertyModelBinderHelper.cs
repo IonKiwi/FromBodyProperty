@@ -4,12 +4,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.IO;
 
 namespace WebApplication.Logic {
 	public interface IFromBodyPropertyModelBinderHelper {
 		bool HasReadRequestBody { get; }
-		Task<Tuple<bool, object, Dictionary<string, Exception>>> ReadAsync(FromBodyPropertyInputFormatterContext context, Func<Action<JsonSerializer, JsonReader>, Action<string, Exception>, Task> readRequestBody, Encoding encoding);
+		Task<(bool success, bool noValue, object model, Exception exception)> ReadAsync(FromBodyPropertyInputFormatterContext context, Func<Func<Stream, JsonSerializerOptions, Task>, Task> readRequestBody, Encoding encoding);
 		void Initialize(string id, IEnumerable<ParameterDescriptor> parameters);
 	}
 }
